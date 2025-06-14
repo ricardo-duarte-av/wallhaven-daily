@@ -1,0 +1,34 @@
+matrix:
+  server_url: "https://matrix.org"
+  user: "@matthew:matrix.org"
+  password: "This is Not Real"
+  room_id: "!secretroom:matrix.org"
+  token_file: "matrix_token.txt"
+
+wallhaven:
+  api_token: "GetYourOwnToken"
+  categories: "111" # General + Anime + People
+  purity: "100" # SFW + Sketchy + NSFW
+  sorting: "toplist" # toplist|favourites|views|date_added|random|relevance|hot
+  toprange: # Must be a list, even if with only 1 entry
+    - "1d"
+    - "3d"
+    - "1w"
+    - "1M"
+  order: "desc"
+  ai_filter: "0" # Yes or No
+  user_agent: "Mozilla/5.0 (X11; Linux i686; rv:110.0) Gecko/20100101 Firefox/110.0" #Be creative...
+
+database: "sqlite.db" 
+
+wait_time: 600 # seconds (10 minutes)
+
+openai_key: "sk-proj-iswearthisisreallyanopenaivalidkey"
+
+mastodon:
+  mastodon_server: "https://mastodon.server.com"
+  mastodon_token: "mastodon-app-token"
+
+ntfy:
+   server: "https://ntfy.sh"
+   topic: "wallhaven"
