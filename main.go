@@ -4,9 +4,33 @@ import (
     "log"
     "os"
     "sync"
+    "path/filepath"
+    "strings"
 )
 
 func main() {
+    exePath, err := os.Executable()
+    if err != nil {
+        log.Fatalf("Failed to get executable path: %v", err)
+    }
+    exeDir := filepath.Dir(exePath)
+
+    // If running via go run, exeDir will be /tmp/go-build... -- fallback to working dir or source dir
+    if strings.Contains(exeDir, "/go-build") || strings.HasPrefix(exeDir, os.TempDir()) {
+        // Use the directory of the main.go (assume it's where the config is)
+        cwd, err := os.Getwd()
+        if err != nil {
+            log.Fatalf("Failed to get working directory: %v", err)
+        }
+        exeDir = cwd
+    }
+
+    if err := os.Chdir(exeDir); err != nil {
+        log.Fatalf("Failed to change working directory: %v", err)
+    }
+
+    log.Printf("Switch to dir: %v", exeDir)
+
     cfg, err := LoadConfig("config.yaml")
     if err != nil {
         log.Fatalf("Failed to load config: %v", err)
