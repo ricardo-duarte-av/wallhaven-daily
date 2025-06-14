@@ -59,12 +59,6 @@ func main() {
             }
             allImages = append(allImages, images...)
         }
-        //images, err := cfg.FetchNewWallhavenImages(db)
-        //if err != nil {
-        //    log.Printf("Failed to fetch images: %v", err)
-        //    logWait(cfg.WaitTime)
-        //    continue
-       // }
 
         var wg sync.WaitGroup
 
