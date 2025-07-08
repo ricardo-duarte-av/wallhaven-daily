@@ -15,6 +15,7 @@ import (
         "strings"
         "time"
         "os"
+        "errors"
 
         "github.com/buckket/go-blurhash"
         "maunium.net/go/mautrix"
