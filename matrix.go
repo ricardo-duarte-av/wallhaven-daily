@@ -128,7 +128,12 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         // Upload thumbnail
         thumbResp, err := m.client.UploadLink(ctx, img.Thumbs.Original)
         if err != nil {
-                return err
+            if httpErr, ok := err.(*mautrix.HTTPError); ok {
+                log.Printf("Matrix image upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
+            } else {
+                log.Printf("Matrix image upload error: %v", err)
+            }
+            return err                
         }
 
         // Compute blurhash
