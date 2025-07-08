@@ -117,7 +117,12 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         // Upload original image
         mainResp, err := m.client.UploadLink(ctx, img.Path)
         if err != nil {
-                return err
+            if httpErr, ok := err.(*mautrix.HTTPError); ok {
+                log.Printf("Matrix image upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
+            } else {
+                log.Printf("Matrix image upload error: %v", err)
+            }
+            return err
         }
 
         // Upload thumbnail
