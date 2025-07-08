@@ -166,6 +166,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 log.Printf("Matrix send error: %v", err)
             }
         }
+        log.Printf("Return this: %v", err)
         return err
 }
 
