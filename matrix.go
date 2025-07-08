@@ -118,13 +118,13 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
 
         // Upload original image
         mainResp, err := m.client.UploadLink(ctx, img.Path)
-        log.Printf("Matrix: PING.")
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
                 log.Printf("Matrix image upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
             } else {
                 log.Printf("Matrix image upload error: %v", err)
             }
+            log.Printf("Matrix: Returning on UploadLink.")
             return err
         }
 
@@ -136,6 +136,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
             } else {
                 log.Printf("Matrix image upload error: %v", err)
             }
+            log.Printf("Matrix: Returning on Thumbnail.")
             return err                
         }
         log.Printf("Matrix: thumbnail uploaded.")
