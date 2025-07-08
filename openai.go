@@ -82,6 +82,12 @@ func GetOpenAIDescription(cfg *Config, imagePath string) (string, error) {
                 log.Printf("OpenAI API returned no choices. Body: %s", string(body))
                 return "", fmt.Errorf("no description returned from openai")
         }
+        desc := openaiResp.Choices[0].Message.Content
+        if len(desc) < 50 {
+                log.Printf("OpenAI returned a suspiciously short description: %q", desc)
+                // Return a generic description instead of an error
+                return "No detailed description available for this image.", nil
+        }
 
         return openaiResp.Choices[0].Message.Content, nil
 }
