@@ -92,12 +92,14 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         // Download thumbnail to temp file for OpenAI
         tmpfile, err := ioutil.TempFile("", "thumb-*.jpg")
         if err != nil {
+                log.Printf("Error with TempFile: %v", err)
                 return err
         }
         defer os.Remove(tmpfile.Name())
 
         resp, err := http.Get(img.Thumbs.Original)
         if err != nil {
+                log.Printf("Error getting image: %v", err)
                 return err
         }
         defer resp.Body.Close()
