@@ -149,6 +149,13 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         }
 
         _, err = m.client.SendMessageEvent(ctx, m.roomID, event.EventMessage, content)
+        if err != nil {
+            if httpErr, ok := err.(*mautrix.HTTPError); ok {
+                log.Printf("Matrix HTTP error: %d %s - %s", httpErr.Code, httpErr.Message, string(httpErr.Body))
+            } else {
+                log.Printf("Matrix send error: %v", err)
+            }
+        }
         return err
 }
 
