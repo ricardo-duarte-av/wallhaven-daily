@@ -137,12 +137,14 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
             }
             return err                
         }
+        log.Printf("Matrix: thumbnail uploaded.")
 
         // Compute blurhash
         blurhashStr, err := computeBlurhashFromURL(img.Thumbs.Original)
         if err != nil {
                 blurhashStr = ""
         }
+        log.Printf("Matrix: blurhash calculated.")
 
         info := map[string]interface{}{
                 "mimetype":      img.FileType,
@@ -161,6 +163,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         }
 
         _, err = m.client.SendMessageEvent(ctx, m.roomID, event.EventMessage, content)
+        log.Printf("Matrix: sent.")
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
                 log.Printf("Matrix HTTP error: %s - %s", httpErr.Message, httpErr.ResponseBody)
