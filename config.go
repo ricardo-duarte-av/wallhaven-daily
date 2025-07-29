@@ -21,7 +21,7 @@ type Config struct {
                 Sorting    string `yaml:"sorting"`
                 Toprange   []string `yaml:"toprange"`
                 Order      string `yaml:"order"`
-                AIFilter   string `yaml:"ai_filter"`
+                // AIFilter   string `yaml:"ai_filter"` // No longer supported by Wallhaven API
                 UserAgent  string `yaml:"user_agent"`
         } `yaml:"wallhaven"`
         Database string `yaml:"database"`

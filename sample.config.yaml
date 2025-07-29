@@ -16,7 +16,7 @@ wallhaven:
     - "1w"
     - "1M"
   order: "desc"
-  ai_filter: "0" # Yes or No
+  # ai_filter: "0" # No longer supported by Wallhaven API
   user_agent: "Mozilla/5.0 (X11; Linux i686; rv:110.0) Gecko/20100101 Firefox/110.0" #Be creative...
 
 database: "sqlite.db" 

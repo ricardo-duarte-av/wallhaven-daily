@@ -41,7 +41,7 @@ type WallhavenSearchResponse struct {
 
 func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]WallhavenImage, error) {
         api := fmt.Sprintf(
-                "https://wallhaven.cc/api/v1/search?apikey=%s&categories=%s&purity=%s&sorting=%s&topRange=%s&order=%s&ai_art_filter=%s",
+                "https://wallhaven.cc/api/v1/search?apikey=%s&categories=%s&purity=%s&sorting=%s&topRange=%s&order=%s",
                 cfg.Wallhaven.APIToken,
                 cfg.Wallhaven.Categories,
                 cfg.Wallhaven.Purity,
@@ -49,9 +49,8 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                 //cfg.Wallhaven.Toprange,
                 toprange,
                 cfg.Wallhaven.Order,
-                cfg.Wallhaven.AIFilter,
         )
-        //log.Printf("API URL: %v", api)
+        log.Printf("Search API URL: %v", api)
         req, _ := http.NewRequest("GET", api, nil)
         req.Header.Set("User-Agent", cfg.Wallhaven.UserAgent)
         client := &http.Client{Timeout: 15 * time.Second}
@@ -61,8 +60,19 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
         }
         defer resp.Body.Close()
         body, _ := ioutil.ReadAll(resp.Body)
+        
+        // Debug logging
+        log.Printf("Search API Response Status: %d", resp.StatusCode)
+        log.Printf("Search API Response Headers: %v", resp.Header)
+        if len(body) > 200 {
+                log.Printf("Search API Response Body (first 200 chars): %s", string(body[:200]))
+        } else {
+                log.Printf("Search API Response Body: %s", string(body))
+        }
+        
         var searchRes WallhavenSearchResponse
         if err := json.Unmarshal(body, &searchRes); err != nil {
+                log.Printf("JSON unmarshal error: %v", err)
                 return nil, err
         }
 
@@ -88,6 +98,7 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
 
 func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {
         api := fmt.Sprintf("https://wallhaven.cc/api/v1/w/%s?apikey=%s", id, cfg.Wallhaven.APIToken)
+        log.Printf("Image API URL: %v", api)
         req, _ := http.NewRequest("GET", api, nil)
         req.Header.Set("User-Agent", cfg.Wallhaven.UserAgent)
         client := &http.Client{Timeout: 10 * time.Second}
@@ -99,8 +110,19 @@ func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {
         }
         defer resp.Body.Close()
         body, _ := ioutil.ReadAll(resp.Body)
+        
+        // Debug logging
+        log.Printf("Image API Response Status: %d", resp.StatusCode)
+        log.Printf("Image API Response Headers: %v", resp.Header)
+        if len(body) > 200 {
+                log.Printf("Image API Response Body (first 200 chars): %s", string(body[:200]))
+        } else {
+                log.Printf("Image API Response Body: %s", string(body))
+        }
+        
         var imgRes WallhavenImageResponse
         if err := json.Unmarshal(body, &imgRes); err != nil {
+                log.Printf("Image JSON unmarshal error: %v", err)
                 return WallhavenImage{}, err
         }
         return imgRes.Data, nil
