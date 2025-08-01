@@ -152,8 +152,8 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                 }
                 images = append(images, image)
                 
-                // Add a small delay between image requests to be respectful to the API
-                time.Sleep(500 * time.Millisecond)
+                // Add a delay between image requests to be respectful to the API
+                time.Sleep(2 * time.Second)
         }
         return images, nil
 }

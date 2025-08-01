@@ -6,6 +6,7 @@ import (
     "sync"
     "path/filepath"
     "strings"
+    "time"
 )
 
 func main() {
@@ -46,18 +47,24 @@ func main() {
         log.Fatalf("Matrix login failed: %v", err)
     }
 
-    maxConcurrentImages := 3
+    maxConcurrentImages := 1
     semaphore := make(chan struct{}, maxConcurrentImages)
 
     for {
         var allImages []WallhavenImage
-        for _, rangeOpt := range cfg.Wallhaven.Toprange {
+        for i, rangeOpt := range cfg.Wallhaven.Toprange {
             images, err := cfg.FetchNewWallhavenImages(db, rangeOpt)
             if err != nil {
                 log.Printf("Failed to fetch images for range %s: %v", rangeOpt, err)
                 continue
             }
             allImages = append(allImages, images...)
+            
+            // Add delay between search API calls to avoid rate limiting
+            if i < len(cfg.Wallhaven.Toprange)-1 {
+                log.Printf("Waiting 3 seconds before next search API call...")
+                time.Sleep(3 * time.Second)
+            }
         }
 
         var wg sync.WaitGroup
