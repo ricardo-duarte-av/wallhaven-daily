@@ -35,6 +35,7 @@ type Config struct {
             Server string `yaml:"server"`
             Topic  string `yaml:"topic"`
         } `yaml:"ntfy"`
+        Debug bool `yaml:"debug"`
 }
 
 func LoadConfig(filename string) (*Config, error) {

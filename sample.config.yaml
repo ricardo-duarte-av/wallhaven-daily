@@ -32,3 +32,5 @@ mastodon:
 ntfy:
    server: "https://ntfy.sh"
    topic: "wallhaven"
+
+debug: false  # Set to true for verbose logging including HTTP headers

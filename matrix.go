@@ -66,11 +66,15 @@ func NewMatrixBot(cfg *Config) (*MatrixBot, error) {
         if err != nil {
                 return nil, err
         }
-        return &MatrixBot{
+        bot := &MatrixBot{
                 client:    client,
                 roomID:    id.RoomID(cfg.Matrix.RoomID),
                 tokenFile: cfg.Matrix.TokenFile,
-        }, nil
+        }
+        if cfg.Debug {
+                log.Printf("Matrix: Bot created successfully for room %s", cfg.Matrix.RoomID)
+        }
+        return bot, nil
 }
 
 func loadToken(filename string) (string, error) {
@@ -88,6 +92,9 @@ func saveToken(filename, token string) error {
 func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription string) error {
         ctx := context.Background()
 
+        if cfg.Debug {
+                log.Printf("Matrix: Starting to send image %s", img.ID)
+        }
         filename := path.Base(img.Path)
 
         // Download thumbnail to temp file for OpenAI
@@ -118,6 +125,9 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         log.Printf("Sending image to Matrix:\n%s\n", caption)
 
         // Upload original image
+        if cfg.Debug {
+                log.Printf("Matrix: Attempting to upload original image from %s", img.Path)
+        }
         mainResp, err := m.client.UploadLink(ctx, img.Path)
         if err != nil {
             log.Printf("Matrix image upload error type: %T", err)
@@ -136,26 +146,36 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
             log.Printf("Matrix: Returning on UploadLink.")
             return err
         }
+        if cfg.Debug {
+                log.Printf("Matrix: Original image uploaded successfully, URI: %s", mainResp.ContentURI)
+        }
 
         // Upload thumbnail
+        if cfg.Debug {
+                log.Printf("Matrix: Attempting to upload thumbnail from %s", img.Thumbs.Original)
+        }
         thumbResp, err := m.client.UploadLink(ctx, img.Thumbs.Original)
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
-                log.Printf("Matrix image upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
+                log.Printf("Matrix thumbnail upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
             } else {
-                log.Printf("Matrix image upload error: %v", err)
+                log.Printf("Matrix thumbnail upload error: %v", err)
             }
             log.Printf("Matrix: Returning on Thumbnail.")
             return err                
         }
-        log.Printf("Matrix: thumbnail uploaded.")
+        if cfg.Debug {
+                log.Printf("Matrix: Thumbnail uploaded successfully, URI: %s", thumbResp.ContentURI)
+        }
 
         // Compute blurhash
         blurhashStr, err := computeBlurhashFromURL(img.Thumbs.Original)
         if err != nil {
                 blurhashStr = ""
         }
-        log.Printf("Matrix: blurhash calculated.")
+        if cfg.Debug {
+                log.Printf("Matrix: blurhash calculated.")
+        }
 
         info := map[string]interface{}{
                 "mimetype":      img.FileType,
@@ -173,17 +193,23 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 "info":     info,
         }
 
+        if cfg.Debug {
+                log.Printf("Matrix: Sending message to room %s", m.roomID)
+        }
         _, err = m.client.SendMessageEvent(ctx, m.roomID, event.EventMessage, content)
-        log.Printf("Matrix: sent.")
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
                 log.Printf("Matrix HTTP error: %s - %s", httpErr.Message, httpErr.ResponseBody)
             } else {
                 log.Printf("Matrix send error: %v", err)
             }
+            log.Printf("Matrix: Failed to send message")
+            return err
         }
-        log.Printf("Return this: %v", err)
-        return err
+        if cfg.Debug {
+                log.Printf("Matrix: Message sent successfully to room %s", m.roomID)
+        }
+        return nil
 }
 
 func buildCaption(img WallhavenImage, openaiDescription string) string {
