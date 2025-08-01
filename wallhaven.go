@@ -6,6 +6,7 @@ import (
         "io/ioutil"
         "log"
         "net/http"
+        "strconv"
         "time"
 )
 
@@ -39,6 +40,58 @@ type WallhavenSearchResponse struct {
         } `json:"data"`
 }
 
+// Rate limiting helper functions
+func handleRateLimit(resp *http.Response) error {
+        if resp.StatusCode == 429 {
+                retryAfter := resp.Header.Get("Retry-After")
+                if retryAfter != "" {
+                        if seconds, err := strconv.Atoi(retryAfter); err == nil {
+                                log.Printf("Rate limited. Waiting %d seconds before retry...", seconds)
+                                time.Sleep(time.Duration(seconds) * time.Second)
+                                return nil
+                        }
+                }
+                // Default wait time if Retry-After header is missing or invalid
+                log.Printf("Rate limited. Waiting 60 seconds before retry...")
+                time.Sleep(60 * time.Second)
+                return nil
+        }
+        return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+}
+
+func makeRateLimitedRequest(req *http.Request, client *http.Client, maxRetries int) (*http.Response, error) {
+        for attempt := 0; attempt < maxRetries; attempt++ {
+                resp, err := client.Do(req)
+                if err != nil {
+                        return nil, err
+                }
+                
+                if resp.StatusCode == 429 {
+                        if err := handleRateLimit(resp); err != nil {
+                                resp.Body.Close()
+                                return nil, err
+                        }
+                        resp.Body.Close()
+                        log.Printf("Retrying request (attempt %d/%d)...", attempt+1, maxRetries)
+                        continue
+                }
+                
+                if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+                        return resp, nil
+                }
+                
+                resp.Body.Close()
+                if attempt == maxRetries-1 {
+                        return nil, fmt.Errorf("HTTP %d after %d attempts: %s", resp.StatusCode, maxRetries, resp.Status)
+                }
+                
+                log.Printf("HTTP %d, retrying in 5 seconds (attempt %d/%d)...", resp.StatusCode, attempt+1, maxRetries)
+                time.Sleep(5 * time.Second)
+        }
+        
+        return nil, fmt.Errorf("max retries exceeded")
+}
+
 func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]WallhavenImage, error) {
         api := fmt.Sprintf(
                 "https://wallhaven.cc/api/v1/search?apikey=%s&categories=%s&purity=%s&sorting=%s&topRange=%s&order=%s",
@@ -54,7 +107,9 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
         req, _ := http.NewRequest("GET", api, nil)
         req.Header.Set("User-Agent", cfg.Wallhaven.UserAgent)
         client := &http.Client{Timeout: 15 * time.Second}
-        resp, err := client.Do(req)
+        
+        // Use rate-limited request with retries
+        resp, err := makeRateLimitedRequest(req, client, 3)
         if err != nil {
                 return nil, err
         }
@@ -92,6 +147,9 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                         continue
                 }
                 images = append(images, image)
+                
+                // Add a small delay between image requests to be respectful to the API
+                time.Sleep(500 * time.Millisecond)
         }
         return images, nil
 }
@@ -102,10 +160,12 @@ func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {
         req, _ := http.NewRequest("GET", api, nil)
         req.Header.Set("User-Agent", cfg.Wallhaven.UserAgent)
         client := &http.Client{Timeout: 10 * time.Second}
-        resp, err := client.Do(req)
+        
+        // Use rate-limited request with retries
+        resp, err := makeRateLimitedRequest(req, client, 3)
         if err != nil {
                 log.Printf("Image url: %v", api)
-                log.Printf("Result: %v", resp)
+                log.Printf("Request failed: %v", err)
                 return WallhavenImage{}, err
         }
         defer resp.Body.Close()
