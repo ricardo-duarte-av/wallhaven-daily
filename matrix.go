@@ -103,7 +103,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 log.Printf("Error downloading/decoding thumbnail: %v", err)
                 return err
         }
-        mainImgData, mainImg, err := downloadAndDecodeImage(img.Path)
+        _, mainImg, err := downloadAndDecodeImage(img.Path)
         if err != nil {
                 log.Printf("Error downloading/decoding main image: %v", err)
                 return err
