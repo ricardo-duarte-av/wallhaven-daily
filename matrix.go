@@ -97,21 +97,30 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         }
         filename := path.Base(img.Path)
 
-        // Download thumbnail to temp file for OpenAI
+        // Download and decode images once for reuse
+        thumbImgData, thumbImg, err := downloadAndDecodeImage(img.Thumbs.Original)
+        if err != nil {
+                log.Printf("Error downloading/decoding thumbnail: %v", err)
+                return err
+        }
+        mainImgData, mainImg, err := downloadAndDecodeImage(img.Path)
+        if err != nil {
+                log.Printf("Error downloading/decoding main image: %v", err)
+                return err
+        }
+
+        // Save thumbnail to temp file for OpenAI (if needed in future)
         tmpfile, err := ioutil.TempFile("", "thumb-*.jpg")
         if err != nil {
                 log.Printf("Error with TempFile: %v", err)
                 return err
         }
         defer os.Remove(tmpfile.Name())
-
-        resp, err := http.Get(img.Thumbs.Original)
+        _, err = tmpfile.Write(thumbImgData)
         if err != nil {
-                log.Printf("Error getting image: %v", err)
+                log.Printf("Error writing to temp file: %v", err)
                 return err
         }
-        defer resp.Body.Close()
-        io.Copy(tmpfile, resp.Body)
         tmpfile.Close()
 
         // Get OpenAI description
@@ -168,21 +177,37 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 log.Printf("Matrix: Thumbnail uploaded successfully, URI: %s", thumbResp.ContentURI)
         }
 
-        // Compute blurhash
-        blurhashStr, err := computeBlurhashFromURL(img.Thumbs.Original)
+        // Compute blurhash from already decoded thumbnail
+        blurhashStr, err := computeBlurhash(thumbImg)
         if err != nil {
                 blurhashStr = ""
-        }
-        if cfg.Debug {
+                if cfg.Debug {
+                        log.Printf("Warning: Could not compute blurhash: %v", err)
+                }
+        } else if cfg.Debug {
                 log.Printf("Matrix: blurhash calculated.")
         }
 
+        // Get image dimensions from already decoded images
+        mainBounds := mainImg.Bounds()
+        mainWidth, mainHeight := mainBounds.Dx(), mainBounds.Dy()
+        thumbBounds := thumbImg.Bounds()
+        thumbWidth, thumbHeight := thumbBounds.Dx(), thumbBounds.Dy()
+
+        thumbnailInfo := map[string]interface{}{
+                "mimetype": img.FileType,
+                "w":        thumbWidth,
+                "h":        thumbHeight,
+        }
+
         info := map[string]interface{}{
-                "mimetype":      img.FileType,
-                "size":          img.FileSize,
+                "mimetype":       img.FileType,
+                "size":           img.FileSize,
                 "thumbnail_url":  thumbResp.ContentURI,
-                "thumbnail_info": map[string]interface{}{"mimetype": img.FileType},
-                "blurhash":      blurhashStr,
+                "thumbnail_info": thumbnailInfo,
+                "blurhash":       blurhashStr,
+                "w":              mainWidth,
+                "h":              mainHeight,
         }
 
         content := map[string]interface{}{
@@ -231,21 +256,27 @@ func buildCaption(img WallhavenImage, openaiDescription string) string {
 
 
 
-// Downloads the image from the given URL, decodes, and produces a blurhash.
-func computeBlurhashFromURL(imageURL string) (string, error) {
+// Downloads and decodes an image from a URL, returning both the raw bytes and decoded image.
+// This allows reuse of the downloaded data for multiple operations.
+func downloadAndDecodeImage(imageURL string) ([]byte, image.Image, error) {
         resp, err := http.Get(imageURL)
         if err != nil {
-                return "", err
+                return nil, nil, err
         }
         defer resp.Body.Close()
         imgData, err := io.ReadAll(resp.Body)
         if err != nil {
-                return "", err
+                return nil, nil, err
         }
         img, _, err := image.Decode(bytes.NewReader(imgData))
         if err != nil {
-                return "", err
+                return nil, nil, err
         }
+        return imgData, img, nil
+}
+
+// Computes blurhash from an already decoded image.
+func computeBlurhash(img image.Image) (string, error) {
         return blurhash.Encode(4, 3, img)
 }
 
