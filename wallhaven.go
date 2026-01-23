@@ -40,6 +40,55 @@ type WallhavenSearchResponse struct {
         } `json:"data"`
 }
 
+// RateLimitInfo holds rate limit information from response headers
+type RateLimitInfo struct {
+        Limit     int
+        Remaining int
+}
+
+// ParseRateLimitHeaders extracts rate limit information from response headers
+func ParseRateLimitHeaders(resp *http.Response) RateLimitInfo {
+        info := RateLimitInfo{}
+        if limitStr := resp.Header.Get("X-Ratelimit-Limit"); limitStr != "" {
+                if limit, err := strconv.Atoi(limitStr); err == nil {
+                        info.Limit = limit
+                }
+        }
+        if remainingStr := resp.Header.Get("X-Ratelimit-Remaining"); remainingStr != "" {
+                if remaining, err := strconv.Atoi(remainingStr); err == nil {
+                        info.Remaining = remaining
+                }
+        }
+        return info
+}
+
+// CalculateAdaptiveDelay calculates delay based on remaining rate limit
+// Returns delay in seconds
+func CalculateAdaptiveDelay(remaining, limit int) int {
+        if limit == 0 {
+                // If we don't know the limit, use default
+                return 1
+        }
+        
+        // Calculate percentage remaining
+        percentage := float64(remaining) / float64(limit)
+        
+        switch {
+        case percentage > 0.66: // > 66% remaining
+                return 1 // Fast when plenty of quota
+        case percentage > 0.33: // 33-66% remaining
+                return 2 // Slightly slower
+        case percentage > 0.20: // 20-33% remaining
+                return 5 // Moderate slowdown
+        case percentage > 0.10: // 10-20% remaining
+                return 10 // Significant slowdown
+        case percentage > 0.05: // 5-10% remaining
+                return 20 // Very slow
+        default: // < 5% remaining
+                return 45 // Very conservative
+        }
+}
+
 // Rate limiting helper functions
 func handleRateLimit(resp *http.Response) error {
         if resp.StatusCode == 429 {
@@ -92,7 +141,7 @@ func makeRateLimitedRequest(req *http.Request, client *http.Client, maxRetries i
         return nil, fmt.Errorf("max retries exceeded")
 }
 
-func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]WallhavenImage, error) {
+func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]WallhavenImage, RateLimitInfo, error) {
         api := fmt.Sprintf(
                 "https://wallhaven.cc/api/v1/search?apikey=%s&categories=%s&purity=%s&sorting=%s&topRange=%s&order=%s",
                 cfg.Wallhaven.APIToken,
@@ -113,10 +162,13 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
         // Use rate-limited request with retries
         resp, err := makeRateLimitedRequest(req, client, 3)
         if err != nil {
-                return nil, err
+                return nil, RateLimitInfo{}, err
         }
         defer resp.Body.Close()
         body, _ := ioutil.ReadAll(resp.Body)
+        
+        // Parse rate limit info from headers
+        rateLimitInfo := ParseRateLimitHeaders(resp)
         
         // Debug logging
         if cfg.Debug {
@@ -132,7 +184,7 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
         var searchRes WallhavenSearchResponse
         if err := json.Unmarshal(body, &searchRes); err != nil {
                 log.Printf("JSON unmarshal error: %v", err)
-                return nil, err
+                return nil, rateLimitInfo, err
         }
 
         var images []WallhavenImage
@@ -155,7 +207,7 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                 // Add a delay between image requests to be respectful to the API
                 time.Sleep(2 * time.Second)
         }
-        return images, nil
+        return images, rateLimitInfo, nil
 }
 
 func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {

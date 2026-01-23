@@ -52,18 +52,22 @@ func main() {
 
     for {
         var allImages []WallhavenImage
+        var lastRateLimitInfo RateLimitInfo
         for i, rangeOpt := range cfg.Wallhaven.Toprange {
-            images, err := cfg.FetchNewWallhavenImages(db, rangeOpt)
+            images, rateLimitInfo, err := cfg.FetchNewWallhavenImages(db, rangeOpt)
             if err != nil {
                 log.Printf("Failed to fetch images for range %s: %v", rangeOpt, err)
                 continue
             }
             allImages = append(allImages, images...)
+            lastRateLimitInfo = rateLimitInfo
             
-            // Add delay between search API calls to avoid rate limiting
+            // Add adaptive delay between search API calls based on rate limit remaining
             if i < len(cfg.Wallhaven.Toprange)-1 {
-                log.Printf("Waiting 3 seconds before next search API call...")
-                time.Sleep(3 * time.Second)
+                delay := CalculateAdaptiveDelay(rateLimitInfo.Remaining, rateLimitInfo.Limit)
+                log.Printf("Rate limit: %d/%d remaining. Waiting %d seconds before next search API call...", 
+                    rateLimitInfo.Remaining, rateLimitInfo.Limit, delay)
+                time.Sleep(time.Duration(delay) * time.Second)
             }
         }
 
