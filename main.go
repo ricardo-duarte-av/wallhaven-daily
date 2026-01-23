@@ -52,7 +52,6 @@ func main() {
 
     for {
         var allImages []WallhavenImage
-        var lastRateLimitInfo RateLimitInfo
         for i, rangeOpt := range cfg.Wallhaven.Toprange {
             images, rateLimitInfo, err := cfg.FetchNewWallhavenImages(db, rangeOpt)
             if err != nil {
@@ -60,7 +59,6 @@ func main() {
                 continue
             }
             allImages = append(allImages, images...)
-            lastRateLimitInfo = rateLimitInfo
             
             // Add adaptive delay between search API calls based on rate limit remaining
             if i < len(cfg.Wallhaven.Toprange)-1 {
