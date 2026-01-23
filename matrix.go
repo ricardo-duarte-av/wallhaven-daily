@@ -205,7 +205,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 "size":           img.FileSize,
                 "thumbnail_url":  thumbResp.ContentURI,
                 "thumbnail_info": thumbnailInfo,
-                "blurhash":       blurhashStr,
+                "xyz.amorgan.blurhash": blurhashStr,
                 "w":              mainWidth,
                 "h":              mainHeight,
         }
