@@ -6,6 +6,7 @@ import (
         "fmt"
         "image"
         _ "image/jpeg"
+        "image/gif"
         _ "image/png"
         "io"
         "io/ioutil"
@@ -103,7 +104,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 log.Printf("Error downloading/decoding thumbnail: %v", err)
                 return err
         }
-        _, mainImg, err := downloadAndDecodeImage(img.Path)
+        mainImgData, mainImg, err := downloadAndDecodeImage(img.Path)
         if err != nil {
                 log.Printf("Error downloading/decoding main image: %v", err)
                 return err
@@ -194,6 +195,9 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         thumbBounds := thumbImg.Bounds()
         thumbWidth, thumbHeight := thumbBounds.Dx(), thumbBounds.Dy()
 
+        // Check if image is animated (check main image, not thumbnail)
+        isAnimated := isImageAnimated(mainImgData)
+
         thumbnailInfo := map[string]interface{}{
                 "mimetype": img.FileType,
                 "w":        thumbWidth,
@@ -208,6 +212,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 "xyz.amorgan.blurhash": blurhashStr,
                 "w":              mainWidth,
                 "h":              mainHeight,
+                "is_animated":    isAnimated,
         }
 
         content := map[string]interface{}{
@@ -278,6 +283,19 @@ func downloadAndDecodeImage(imageURL string) ([]byte, image.Image, error) {
 // Computes blurhash from an already decoded image.
 func computeBlurhash(img image.Image) (string, error) {
         return blurhash.Encode(4, 3, img)
+}
+
+// Checks if an image is animated (e.g., animated GIF).
+// Returns true if the image is animated, false otherwise.
+func isImageAnimated(imageData []byte) bool {
+        // Check if it's a GIF by trying to decode it as a GIF
+        gifImg, err := gif.DecodeAll(bytes.NewReader(imageData))
+        if err != nil {
+                // Not a GIF or can't decode as GIF, assume not animated
+                return false
+        }
+        // GIF is animated if it has more than one frame
+        return len(gifImg.Image) > 1
 }
 
 // Formats the byte size into a human-readable string (KB, MB, etc).
