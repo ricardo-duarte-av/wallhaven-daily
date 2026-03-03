@@ -99,7 +99,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         filename := path.Base(img.Path)
 
         // Download and decode images once for reuse
-        thumbImgData, thumbImg, err := downloadAndDecodeImage(img.Thumbs.Original)
+        thumbImgData, thumbImg, err := downloadAndDecodeImage(img.Thumbs.Large)
         if err != nil {
                 log.Printf("Error downloading/decoding thumbnail: %v", err)
                 return err
@@ -162,9 +162,9 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
 
         // Upload thumbnail
         if cfg.Debug {
-                log.Printf("Matrix: Attempting to upload thumbnail from %s", img.Thumbs.Original)
+                log.Printf("Matrix: Attempting to upload thumbnail from %s", img.Thumbs.Large)
         }
-        thumbResp, err := m.client.UploadLink(ctx, img.Thumbs.Original)
+        thumbResp, err := m.client.UploadLink(ctx, img.Thumbs.Large)
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
                 log.Printf("Matrix thumbnail upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
