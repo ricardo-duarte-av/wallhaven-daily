@@ -69,11 +69,20 @@ func main() {
             }
         }
 
+        log.Printf("Found %d images to process", len(allImages))
+        if len(allImages) == 0 {
+            log.Printf("No images to send, waiting before next run...")
+            logWait(cfg.WaitTime)
+            continue
+        }
+
         var wg sync.WaitGroup
 
         for _, img := range allImages {
             wg.Add(1)
+            log.Printf("Acquiring semaphore slot for image %s", img.ID)
             semaphore <- struct{}{} // Acquire a slot
+            log.Printf("Semaphore acquired, starting goroutine for image %s", img.ID)
 
             go func(img WallhavenImage) {
                 defer wg.Done()

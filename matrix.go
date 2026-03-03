@@ -56,11 +56,23 @@ func NewMatrixBot(cfg *Config) (*MatrixBot, error) {
                 if err != nil {
                         return nil, err
                 }
-                return &MatrixBot{
+                bot := &MatrixBot{
                         client:    client,
                         roomID:    id.RoomID(cfg.Matrix.RoomID),
                         tokenFile: cfg.Matrix.TokenFile,
-                }, nil
+                }
+                
+                // Validate newly created token
+                ctx := context.Background()
+                whoami, err := client.WhoAmI(ctx)
+                if err != nil {
+                        log.Printf("Matrix: Warning - newly created token validation failed (whoami): %v", err)
+                        log.Printf("Matrix: Bot created but token may be invalid. Room: %s", cfg.Matrix.RoomID)
+                } else {
+                        log.Printf("Matrix: Bot created successfully with new login. User: %s, Room: %s", whoami.UserID, cfg.Matrix.RoomID)
+                }
+                
+                return bot, nil
         }
 
         client, err = mautrix.NewClient(cfg.Matrix.ServerURL, id.UserID(cfg.Matrix.User), token)
@@ -72,9 +84,17 @@ func NewMatrixBot(cfg *Config) (*MatrixBot, error) {
                 roomID:    id.RoomID(cfg.Matrix.RoomID),
                 tokenFile: cfg.Matrix.TokenFile,
         }
-        if cfg.Debug {
-                log.Printf("Matrix: Bot created successfully for room %s", cfg.Matrix.RoomID)
+        
+        // Validate token by calling WhoAmI
+        ctx := context.Background()
+        whoami, err := client.WhoAmI(ctx)
+        if err != nil {
+                log.Printf("Matrix: Warning - token validation failed (whoami): %v", err)
+                log.Printf("Matrix: Bot created but token may be invalid. Room: %s", cfg.Matrix.RoomID)
+        } else {
+                log.Printf("Matrix: Bot created successfully. User: %s, Room: %s", whoami.UserID, cfg.Matrix.RoomID)
         }
+        
         return bot, nil
 }
 
@@ -93,9 +113,7 @@ func saveToken(filename, token string) error {
 func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription string) error {
         ctx := context.Background()
 
-        if cfg.Debug {
-                log.Printf("Matrix: Starting to send image %s", img.ID)
-        }
+        log.Printf("Matrix: Starting to send image %s to room %s", img.ID, m.roomID)
         filename := path.Base(img.Path)
 
         // Download and decode images once for reuse
@@ -135,9 +153,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         log.Printf("Sending image to Matrix:\n%s\n", caption)
 
         // Upload original image
-        if cfg.Debug {
-                log.Printf("Matrix: Attempting to upload original image from %s", img.Path)
-        }
+        log.Printf("Matrix: Attempting to upload original image from %s", img.Path)
         mainResp, err := m.client.UploadLink(ctx, img.Path)
         if err != nil {
             log.Printf("Matrix image upload error type: %T", err)
@@ -156,14 +172,10 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
             log.Printf("Matrix: Returning on UploadLink.")
             return err
         }
-        if cfg.Debug {
-                log.Printf("Matrix: Original image uploaded successfully, URI: %s", mainResp.ContentURI)
-        }
+        log.Printf("Matrix: Original image uploaded successfully, URI: %s", mainResp.ContentURI)
 
         // Upload thumbnail
-        if cfg.Debug {
-                log.Printf("Matrix: Attempting to upload thumbnail from %s", img.Thumbs.Large)
-        }
+        log.Printf("Matrix: Attempting to upload thumbnail from %s", img.Thumbs.Large)
         thumbResp, err := m.client.UploadLink(ctx, img.Thumbs.Large)
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
@@ -174,9 +186,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
             log.Printf("Matrix: Returning on Thumbnail.")
             return err                
         }
-        if cfg.Debug {
-                log.Printf("Matrix: Thumbnail uploaded successfully, URI: %s", thumbResp.ContentURI)
-        }
+        log.Printf("Matrix: Thumbnail uploaded successfully, URI: %s", thumbResp.ContentURI)
 
         // Compute blurhash from already decoded thumbnail
         blurhashStr, err := computeBlurhash(thumbImg)
@@ -223,9 +233,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 "info":     info,
         }
 
-        if cfg.Debug {
-                log.Printf("Matrix: Sending message to room %s", m.roomID)
-        }
+        log.Printf("Matrix: Sending message to room %s", m.roomID)
         _, err = m.client.SendMessageEvent(ctx, m.roomID, event.EventMessage, content)
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
@@ -236,9 +244,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
             log.Printf("Matrix: Failed to send message")
             return err
         }
-        if cfg.Debug {
-                log.Printf("Matrix: Message sent successfully to room %s", m.roomID)
-        }
+        log.Printf("Matrix: Message sent successfully to room %s", m.roomID)
         return nil
 }
 
