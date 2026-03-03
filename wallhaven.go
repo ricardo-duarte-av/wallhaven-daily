@@ -170,15 +170,10 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
         // Parse rate limit info from headers
         rateLimitInfo := ParseRateLimitHeaders(resp)
         
-        // Debug logging
+        // Lightweight debug logging (avoid dumping full headers/body)
         if cfg.Debug {
-                log.Printf("Search API Response Status: %d", resp.StatusCode)
-                log.Printf("Search API Response Headers: %v", resp.Header)
-                if len(body) > 200 {
-                        log.Printf("Search API Response Body (first 200 chars): %s", string(body[:200]))
-                } else {
-                        log.Printf("Search API Response Body: %s", string(body))
-                }
+                log.Printf("Search API Response Status: %d (rate limit remaining %d/%d)",
+                        resp.StatusCode, rateLimitInfo.Remaining, rateLimitInfo.Limit)
         }
         
         var searchRes WallhavenSearchResponse
@@ -195,6 +190,7 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                         continue
                 }
                 if sent {
+                        log.Printf("Not sending image %s: already marked as sent in database", img.ID)
                         continue
                 }
                 image, err := FetchWallhavenImage(cfg, img.ID)
@@ -229,20 +225,14 @@ func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {
         defer resp.Body.Close()
         body, _ := ioutil.ReadAll(resp.Body)
         
-        // Debug logging
+        // Lightweight debug logging (avoid dumping full headers/body)
         if cfg.Debug {
                 log.Printf("Image API Response Status: %d", resp.StatusCode)
-                log.Printf("Image API Response Headers: %v", resp.Header)
-                if len(body) > 200 {
-                        log.Printf("Image API Response Body (first 200 chars): %s", string(body[:200]))
-                } else {
-                        log.Printf("Image API Response Body: %s", string(body))
-                }
         }
         
         var imgRes WallhavenImageResponse
         if err := json.Unmarshal(body, &imgRes); err != nil {
-                log.Printf("Image JSON unmarshal error: %v", err)
+                log.Printf("Not sending image %s: JSON unmarshal error: %v", id, err)
                 return WallhavenImage{}, err
         }
         return imgRes.Data, nil

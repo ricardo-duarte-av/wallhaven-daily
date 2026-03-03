@@ -82,15 +82,15 @@ func main() {
                 // Download thumbnail for OpenAI
                 thumbPath, err := DownloadToTempFile(img.Thumbs.Original, "thumb")
                 if err != nil {
-                    log.Printf("Could not download thumbnail: %v", err)
+                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download thumbnail: %v", img.ID, err)
                     return
                 }
                 defer os.Remove(thumbPath)
 
-                // Download full image for Mastodon and ntfy
+                // Download full image for Matrix, Mastodon and ntfy
                 imagePath, err := DownloadToTempFile(img.Path, "image")
                 if err != nil {
-                    log.Printf("Could not download image for Mastodon: %v", err)
+                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download full image: %v", img.ID, err)
                     return
                 }
                 defer os.Remove(imagePath)
