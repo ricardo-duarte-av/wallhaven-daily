@@ -58,10 +58,30 @@ func main() {
             
             log.Printf("Found %d new images to process for range %s", len(imageIDs), rangeOpt)
             
-            // Process and send each image immediately, one at a time
-            for _, imageID := range imageIDs {
-                processAndSendImage(cfg, db, matrixBot, imageID)
+            // Process images in parallel with rate limit awareness
+            maxWorkers := cfg.MaxConcurrentImages
+            if maxWorkers <= 0 {
+                maxWorkers = 3 // Default to 3 concurrent images
             }
+            log.Printf("Processing %d images with %d concurrent workers", len(imageIDs), maxWorkers)
+            
+            // Create a semaphore to limit concurrent workers
+            semaphore := make(chan struct{}, maxWorkers)
+            var wg sync.WaitGroup
+            
+            for _, imageID := range imageIDs {
+                wg.Add(1)
+                semaphore <- struct{}{} // Acquire a slot
+                
+                go func(id string) {
+                    defer wg.Done()
+                    defer func() { <-semaphore }() // Release the slot
+                    processAndSendImage(cfg, db, matrixBot, id)
+                }(imageID)
+            }
+            
+            wg.Wait() // Wait for all images to be processed
+            log.Printf("Completed processing all images for range %s", rangeOpt)
             
             // Add adaptive delay between search API calls based on rate limit remaining
             if i < len(cfg.Wallhaven.Toprange)-1 {

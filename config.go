@@ -36,6 +36,7 @@ type Config struct {
             Topic  string `yaml:"topic"`
         } `yaml:"ntfy"`
         Debug bool `yaml:"debug"`
+        MaxConcurrentImages int `yaml:"max_concurrent_images"` // Number of images to process in parallel
 }
 
 func LoadConfig(filename string) (*Config, error) {

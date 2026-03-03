@@ -7,8 +7,30 @@ import (
         "log"
         "net/http"
         "strconv"
+        "sync"
         "time"
 )
+
+// Rate limiter for Wallhaven API calls
+var wallhavenRateLimiter = struct {
+        mu       sync.Mutex
+        lastCall time.Time
+        minDelay time.Duration
+}{
+        minDelay: 500 * time.Millisecond, // Minimum 500ms between API calls
+}
+
+// waitForRateLimit ensures we don't exceed Wallhaven API rate limits
+func waitForRateLimit() {
+        wallhavenRateLimiter.mu.Lock()
+        defer wallhavenRateLimiter.mu.Unlock()
+        
+        elapsed := time.Since(wallhavenRateLimiter.lastCall)
+        if elapsed < wallhavenRateLimiter.minDelay {
+                time.Sleep(wallhavenRateLimiter.minDelay - elapsed)
+        }
+        wallhavenRateLimiter.lastCall = time.Now()
+}
 
 type WallhavenImage struct {
         ID        string   `json:"id"`
@@ -208,6 +230,9 @@ func (cfg *Config) FetchNewWallhavenImageIDs(db *Database, toprange string) ([]s
 }
 
 func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {
+        // Rate limit: ensure we don't make too many requests too quickly
+        waitForRateLimit()
+        
         api := fmt.Sprintf("https://wallhaven.cc/api/v1/w/%s?apikey=%s", id, cfg.Wallhaven.APIToken)
         if cfg.Debug {
                 log.Printf("Image API URL: %v", api)
