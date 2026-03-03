@@ -79,20 +79,67 @@ func NewMatrixBot(cfg *Config) (*MatrixBot, error) {
         if err != nil {
                 return nil, err
         }
-        bot := &MatrixBot{
-                client:    client,
-                roomID:    id.RoomID(cfg.Matrix.RoomID),
-                tokenFile: cfg.Matrix.TokenFile,
-        }
         
         // Validate token by calling Whoami
         ctx := context.Background()
         whoami, err := client.Whoami(ctx)
         if err != nil {
-                log.Printf("Matrix: Warning - token validation failed (whoami): %v", err)
-                log.Printf("Matrix: Bot created but token may be invalid. Room: %s", cfg.Matrix.RoomID)
+                // Check if it's an invalid token error (401/M_UNKNOWN_TOKEN)
+                var httpErr *mautrix.HTTPError
+                if errors.As(err, &httpErr) && httpErr.Response != nil && httpErr.Response.StatusCode == 401 {
+                        log.Printf("Matrix: Token validation failed (401/M_UNKNOWN_TOKEN), re-authenticating...")
+                        
+                        // Re-authenticate to get a new token
+                        tempClient, err := mautrix.NewClient(cfg.Matrix.ServerURL, "", "")
+                        if err != nil {
+                                return nil, fmt.Errorf("failed to create client for re-auth: %w", err)
+                        }
+                        
+                        resp, err := tempClient.Login(ctx, &mautrix.ReqLogin{
+                                Type: "m.login.password",
+                                Identifier: mautrix.UserIdentifier{
+                                        Type: "m.id.user",
+                                        User: cfg.Matrix.User,
+                                },
+                                Password: cfg.Matrix.Password,
+                        })
+                        if err != nil {
+                                return nil, fmt.Errorf("re-authentication failed: %w", err)
+                        }
+                        
+                        // Save the new token
+                        token = resp.AccessToken
+                        if err := saveToken(cfg.Matrix.TokenFile, token); err != nil {
+                                log.Printf("Matrix: Warning - failed to save new token: %v", err)
+                        } else {
+                                log.Printf("Matrix: New token saved to %s", cfg.Matrix.TokenFile)
+                        }
+                        
+                        // Create client with new token
+                        client, err = mautrix.NewClient(cfg.Matrix.ServerURL, id.UserID(cfg.Matrix.User), token)
+                        if err != nil {
+                                return nil, fmt.Errorf("failed to create client with new token: %w", err)
+                        }
+                        
+                        // Validate the new token
+                        whoami, err = client.Whoami(ctx)
+                        if err != nil {
+                                log.Printf("Matrix: Warning - new token validation failed: %v", err)
+                        } else {
+                                log.Printf("Matrix: Re-authenticated successfully. User: %s, Room: %s", whoami.UserID, cfg.Matrix.RoomID)
+                        }
+                } else {
+                        log.Printf("Matrix: Warning - token validation failed (whoami): %v", err)
+                        log.Printf("Matrix: Bot created but token may be invalid. Room: %s", cfg.Matrix.RoomID)
+                }
         } else {
                 log.Printf("Matrix: Bot created successfully. User: %s, Room: %s", whoami.UserID, cfg.Matrix.RoomID)
+        }
+        
+        bot := &MatrixBot{
+                client:    client,
+                roomID:    id.RoomID(cfg.Matrix.RoomID),
+                tokenFile: cfg.Matrix.TokenFile,
         }
         
         return bot, nil
