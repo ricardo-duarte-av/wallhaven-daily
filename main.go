@@ -51,17 +51,20 @@ func main() {
     semaphore := make(chan struct{}, maxConcurrentImages)
 
     for {
-        var allImages []WallhavenImage
         for i, rangeOpt := range cfg.Wallhaven.Toprange {
             log.Printf("Fetching images for range: %s", rangeOpt)
-            images, rateLimitInfo, err := cfg.FetchNewWallhavenImages(db, rangeOpt)
+            imageIDs, rateLimitInfo, err := cfg.FetchNewWallhavenImageIDs(db, rangeOpt)
             if err != nil {
-                log.Printf("Failed to fetch images for range %s: %v", rangeOpt, err)
+                log.Printf("Failed to fetch image IDs for range %s: %v", rangeOpt, err)
                 continue
             }
-            log.Printf("Fetched %d images for range %s, adding to processing queue", len(images), rangeOpt)
-            allImages = append(allImages, images...)
-            log.Printf("Total images in queue: %d", len(allImages))
+            
+            log.Printf("Found %d new images to process for range %s", len(imageIDs), rangeOpt)
+            
+            // Process and send each image immediately, one at a time
+            for _, imageID := range imageIDs {
+                processAndSendImage(cfg, db, matrixBot, imageID)
+            }
             
             // Add adaptive delay between search API calls based on rate limit remaining
             if i < len(cfg.Wallhaven.Toprange)-1 {
@@ -72,97 +75,86 @@ func main() {
             }
         }
 
-        log.Printf("Found %d images to process", len(allImages))
-        if len(allImages) == 0 {
-            log.Printf("No images to send, waiting before next run...")
-            logWait(cfg.WaitTime)
-            continue
-        }
-
-        var wg sync.WaitGroup
-
-        for _, img := range allImages {
-            wg.Add(1)
-            log.Printf("Acquiring semaphore slot for image %s", img.ID)
-            semaphore <- struct{}{} // Acquire a slot
-            log.Printf("Semaphore acquired, starting goroutine for image %s", img.ID)
-
-            go func(img WallhavenImage) {
-                defer wg.Done()
-                defer func() { <-semaphore }() // Release the slot
-
-                log.Printf("Processing image %s (Path: %s, Thumbnail: %s)", img.ID, img.Path, img.Thumbs.Original)
-
-                // Validate URLs before attempting download
-                if img.Thumbs.Original == "" {
-                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: thumbnail URL is empty", img.ID)
-                    return
-                }
-                if img.Path == "" {
-                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: image URL (Path) is empty", img.ID)
-                    return
-                }
-
-                // Download thumbnail for OpenAI
-                thumbPath, err := DownloadToTempFile(img.Thumbs.Original, "thumb")
-                if err != nil {
-                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download thumbnail from %s: %v", img.ID, img.Thumbs.Original, err)
-                    return
-                }
-                defer os.Remove(thumbPath)
-
-                // Download full image for Matrix, Mastodon and ntfy
-                imagePath, err := DownloadToTempFile(img.Path, "image")
-                if err != nil {
-                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download full image from %s: %v", img.ID, img.Path, err)
-                    return
-                }
-                defer os.Remove(imagePath)
-
-                // OpenAI Description
-                openaiDescription, err := GetOpenAIDescription(cfg, thumbPath)
-                if err != nil {
-                    log.Printf("OpenAI error: %v", err)
-                    openaiDescription = ""
-                }
-
-                // Parallel posting to Matrix, Mastodon, ntfy
-                var postWg sync.WaitGroup
-                postWg.Add(3)
-
-                go func() {
-                    defer postWg.Done()
-                    if err := matrixBot.SendImage(img, cfg, openaiDescription); err != nil {
-                        log.Printf("Failed to send image %s to Matrix: %v", img.ID, err)
-                    }
-                }()
-                go func() {
-                    defer postWg.Done()
-                    if err := PostToMastodon(cfg, img, openaiDescription, imagePath); err != nil {
-                        log.Printf("Failed to post image %s to Mastodon: %v", img.ID, err)
-                    }
-                }()
-                go func() {
-                    defer postWg.Done()
-                    ntfyStatus := BuildNtfyStatus(img, openaiDescription)
-                    ntfyTags := NtfyTags(img)
-                    if err := SendNtfyImageNotification(cfg, imagePath, ntfyStatus, ntfyTags, img.URL); err != nil {
-                        log.Printf("Failed to send ntfy notification for %s: %v", img.ID, err)
-                    }
-                }()
-
-                postWg.Wait()
-
-                // Mark as sent in the DB
-                if err := db.MarkSent(img.ID); err != nil {
-                    log.Printf("Failed to mark image %s as sent: %v", img.ID, err)
-                } else {
-                    log.Printf("Successfully sent image %s to Matrix/Mastodon/ntfy and marked as sent", img.ID)
-                }
-            }(img)
-        }
-
-        wg.Wait() // Wait for all image goroutines to finish
         logWait(cfg.WaitTime)
+    }
+}
+
+func processAndSendImage(cfg *Config, db *Database, matrixBot *MatrixBot, imageID string) {
+    log.Printf("Processing image %s", imageID)
+    
+    // Fetch full image details
+    img, err := FetchWallhavenImage(cfg, imageID)
+    if err != nil {
+        log.Printf("Not sending image %s: failed to fetch image info: %v", imageID, err)
+        return
+    }
+    
+    log.Printf("Processing image %s (Path: %s, Thumbnail: %s)", img.ID, img.Path, img.Thumbs.Original)
+
+    // Validate URLs before attempting download
+    if img.Thumbs.Original == "" {
+        log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: thumbnail URL is empty", img.ID)
+        return
+    }
+    if img.Path == "" {
+        log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: image URL (Path) is empty", img.ID)
+        return
+    }
+
+    // Download thumbnail for OpenAI
+    thumbPath, err := DownloadToTempFile(img.Thumbs.Original, "thumb")
+    if err != nil {
+        log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download thumbnail from %s: %v", img.ID, img.Thumbs.Original, err)
+        return
+    }
+    defer os.Remove(thumbPath)
+
+    // Download full image for Matrix, Mastodon and ntfy
+    imagePath, err := DownloadToTempFile(img.Path, "image")
+    if err != nil {
+        log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download full image from %s: %v", img.ID, img.Path, err)
+        return
+    }
+    defer os.Remove(imagePath)
+
+    // OpenAI Description
+    openaiDescription, err := GetOpenAIDescription(cfg, thumbPath)
+    if err != nil {
+        log.Printf("OpenAI error: %v", err)
+        openaiDescription = ""
+    }
+
+    // Parallel posting to Matrix, Mastodon, ntfy
+    var postWg sync.WaitGroup
+    postWg.Add(3)
+
+    go func() {
+        defer postWg.Done()
+        if err := matrixBot.SendImage(img, cfg, openaiDescription); err != nil {
+            log.Printf("Failed to send image %s to Matrix: %v", img.ID, err)
+        }
+    }()
+    go func() {
+        defer postWg.Done()
+        if err := PostToMastodon(cfg, img, openaiDescription, imagePath); err != nil {
+            log.Printf("Failed to post image %s to Mastodon: %v", img.ID, err)
+        }
+    }()
+    go func() {
+        defer postWg.Done()
+        ntfyStatus := BuildNtfyStatus(img, openaiDescription)
+        ntfyTags := NtfyTags(img)
+        if err := SendNtfyImageNotification(cfg, imagePath, ntfyStatus, ntfyTags, img.URL); err != nil {
+            log.Printf("Failed to send ntfy notification for %s: %v", img.ID, err)
+        }
+    }()
+
+    postWg.Wait()
+
+    // Mark as sent in the DB
+    if err := db.MarkSent(img.ID); err != nil {
+        log.Printf("Failed to mark image %s as sent: %v", img.ID, err)
+    } else {
+        log.Printf("Successfully sent image %s to Matrix/Mastodon/ntfy and marked as sent", img.ID)
     }
 }

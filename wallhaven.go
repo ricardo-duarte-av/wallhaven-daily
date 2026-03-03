@@ -141,14 +141,14 @@ func makeRateLimitedRequest(req *http.Request, client *http.Client, maxRetries i
         return nil, fmt.Errorf("max retries exceeded")
 }
 
-func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]WallhavenImage, RateLimitInfo, error) {
+// FetchNewWallhavenImageIDs returns only the image IDs that need to be processed (not already sent)
+func (cfg *Config) FetchNewWallhavenImageIDs(db *Database, toprange string) ([]string, RateLimitInfo, error) {
         api := fmt.Sprintf(
                 "https://wallhaven.cc/api/v1/search?apikey=%s&categories=%s&purity=%s&sorting=%s&topRange=%s&order=%s",
                 cfg.Wallhaven.APIToken,
                 cfg.Wallhaven.Categories,
                 cfg.Wallhaven.Purity,
                 cfg.Wallhaven.Sorting,
-                //cfg.Wallhaven.Toprange,
                 toprange,
                 cfg.Wallhaven.Order,
         )
@@ -183,32 +183,28 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
         }
 
         log.Printf("Search returned %d image IDs to check", len(searchRes.Data))
-        var images []WallhavenImage
+        var imageIDs []string
+        skippedCount := 0
         for idx, img := range searchRes.Data {
-                log.Printf("Processing search result %d/%d: image ID %s", idx+1, len(searchRes.Data), img.ID)
+                if idx > 0 && idx%10 == 0 {
+                        log.Printf("Progress: Checked %d/%d search results (%d new images, %d already sent)", 
+                                idx, len(searchRes.Data), len(imageIDs), skippedCount)
+                }
                 sent, err := db.IsSent(img.ID)
                 if err != nil {
                         log.Printf("DB error for image %s: %v", img.ID, err)
+                        skippedCount++
                         continue
                 }
                 if sent {
-                        log.Printf("Not sending image %s: already marked as sent in database", img.ID)
+                        // Skip silently - already sent
+                        skippedCount++
                         continue
                 }
-                image, err := FetchWallhavenImage(cfg, img.ID)
-                if err != nil {
-                        log.Printf("Not sending image %s: failed to fetch image info: %v", img.ID, err)
-                        continue
-                }
-                log.Printf("Successfully fetched image %s, will attempt to send", image.ID)
-                images = append(images, image)
-                log.Printf("Added image %s to return list (total: %d)", image.ID, len(images))
-                
-                // Add a delay between image requests to be respectful to the API
-                time.Sleep(2 * time.Second)
+                imageIDs = append(imageIDs, img.ID)
         }
-        log.Printf("FetchNewWallhavenImages returning %d images", len(images))
-        return images, rateLimitInfo, nil
+        log.Printf("Found %d new images to process (skipped %d already sent)", len(imageIDs), skippedCount)
+        return imageIDs, rateLimitInfo, nil
 }
 
 func FetchWallhavenImage(cfg *Config, id string) (WallhavenImage, error) {
