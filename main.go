@@ -53,12 +53,15 @@ func main() {
     for {
         var allImages []WallhavenImage
         for i, rangeOpt := range cfg.Wallhaven.Toprange {
+            log.Printf("Fetching images for range: %s", rangeOpt)
             images, rateLimitInfo, err := cfg.FetchNewWallhavenImages(db, rangeOpt)
             if err != nil {
                 log.Printf("Failed to fetch images for range %s: %v", rangeOpt, err)
                 continue
             }
+            log.Printf("Fetched %d images for range %s, adding to processing queue", len(images), rangeOpt)
             allImages = append(allImages, images...)
+            log.Printf("Total images in queue: %d", len(allImages))
             
             // Add adaptive delay between search API calls based on rate limit remaining
             if i < len(cfg.Wallhaven.Toprange)-1 {

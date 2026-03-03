@@ -182,8 +182,10 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                 return nil, rateLimitInfo, err
         }
 
+        log.Printf("Search returned %d image IDs to check", len(searchRes.Data))
         var images []WallhavenImage
-        for _, img := range searchRes.Data {
+        for idx, img := range searchRes.Data {
+                log.Printf("Processing search result %d/%d: image ID %s", idx+1, len(searchRes.Data), img.ID)
                 sent, err := db.IsSent(img.ID)
                 if err != nil {
                         log.Printf("DB error for image %s: %v", img.ID, err)
@@ -200,10 +202,12 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                 }
                 log.Printf("Successfully fetched image %s, will attempt to send", image.ID)
                 images = append(images, image)
+                log.Printf("Added image %s to return list (total: %d)", image.ID, len(images))
                 
                 // Add a delay between image requests to be respectful to the API
                 time.Sleep(2 * time.Second)
         }
+        log.Printf("FetchNewWallhavenImages returning %d images", len(images))
         return images, rateLimitInfo, nil
 }
 
