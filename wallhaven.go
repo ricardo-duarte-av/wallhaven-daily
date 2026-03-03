@@ -195,9 +195,10 @@ func (cfg *Config) FetchNewWallhavenImages(db *Database, toprange string) ([]Wal
                 }
                 image, err := FetchWallhavenImage(cfg, img.ID)
                 if err != nil {
-                        log.Printf("Failed to fetch image info: %v", err)
+                        log.Printf("Not sending image %s: failed to fetch image info: %v", img.ID, err)
                         continue
                 }
+                log.Printf("Successfully fetched image %s, will attempt to send", image.ID)
                 images = append(images, image)
                 
                 // Add a delay between image requests to be respectful to the API

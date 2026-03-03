@@ -79,10 +79,22 @@ func main() {
                 defer wg.Done()
                 defer func() { <-semaphore }() // Release the slot
 
+                log.Printf("Processing image %s (Path: %s, Thumbnail: %s)", img.ID, img.Path, img.Thumbs.Original)
+
+                // Validate URLs before attempting download
+                if img.Thumbs.Original == "" {
+                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: thumbnail URL is empty", img.ID)
+                    return
+                }
+                if img.Path == "" {
+                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: image URL (Path) is empty", img.ID)
+                    return
+                }
+
                 // Download thumbnail for OpenAI
                 thumbPath, err := DownloadToTempFile(img.Thumbs.Original, "thumb")
                 if err != nil {
-                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download thumbnail: %v", img.ID, err)
+                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download thumbnail from %s: %v", img.ID, img.Thumbs.Original, err)
                     return
                 }
                 defer os.Remove(thumbPath)
@@ -90,7 +102,7 @@ func main() {
                 // Download full image for Matrix, Mastodon and ntfy
                 imagePath, err := DownloadToTempFile(img.Path, "image")
                 if err != nil {
-                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download full image: %v", img.ID, err)
+                    log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download full image from %s: %v", img.ID, img.Path, err)
                     return
                 }
                 defer os.Remove(imagePath)
@@ -132,6 +144,8 @@ func main() {
                 // Mark as sent in the DB
                 if err := db.MarkSent(img.ID); err != nil {
                     log.Printf("Failed to mark image %s as sent: %v", img.ID, err)
+                } else {
+                    log.Printf("Successfully sent image %s to Matrix/Mastodon/ntfy and marked as sent", img.ID)
                 }
             }(img)
         }
