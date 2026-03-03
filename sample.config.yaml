@@ -1,4 +1,5 @@
 matrix:
+  enabled: true  # Set to false to disable Matrix posting
   server_url: "https://matrix.org"
   user: "@matthew:matrix.org"
   password: "This is Not Real"
@@ -26,11 +27,15 @@ wait_time: 600 # seconds (10 minutes)
 openai_key: "sk-proj-iswearthisisreallyanopenaivalidkey"
 
 mastodon:
+  enabled: true  # Set to false to disable Mastodon posting
   mastodon_server: "https://mastodon.server.com"
   mastodon_token: "mastodon-app-token"
 
 ntfy:
-   server: "https://ntfy.sh"
-   topic: "wallhaven"
+  enabled: true  # Set to false to disable ntfy notifications
+  server: "https://ntfy.sh"
+  topic: "wallhaven"
+
+max_concurrent_images: 3  # Number of images to process in parallel (adjust based on rate limits)
 
 debug: false  # Set to true for verbose logging including HTTP headers
