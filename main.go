@@ -47,9 +47,6 @@ func main() {
         log.Fatalf("Matrix login failed: %v", err)
     }
 
-    maxConcurrentImages := 1
-    semaphore := make(chan struct{}, maxConcurrentImages)
-
     for {
         for i, rangeOpt := range cfg.Wallhaven.Toprange {
             log.Printf("Fetching images for range: %s", rangeOpt)
