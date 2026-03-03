@@ -64,7 +64,7 @@ func NewMatrixBot(cfg *Config) (*MatrixBot, error) {
                 
                 // Validate newly created token
                 ctx := context.Background()
-                whoami, err := client.WhoAmI(ctx)
+                whoami, err := client.Whoami(ctx)
                 if err != nil {
                         log.Printf("Matrix: Warning - newly created token validation failed (whoami): %v", err)
                         log.Printf("Matrix: Bot created but token may be invalid. Room: %s", cfg.Matrix.RoomID)
@@ -85,9 +85,9 @@ func NewMatrixBot(cfg *Config) (*MatrixBot, error) {
                 tokenFile: cfg.Matrix.TokenFile,
         }
         
-        // Validate token by calling WhoAmI
+        // Validate token by calling Whoami
         ctx := context.Background()
-        whoami, err := client.WhoAmI(ctx)
+        whoami, err := client.Whoami(ctx)
         if err != nil {
                 log.Printf("Matrix: Warning - token validation failed (whoami): %v", err)
                 log.Printf("Matrix: Bot created but token may be invalid. Room: %s", cfg.Matrix.RoomID)
