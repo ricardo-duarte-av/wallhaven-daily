@@ -42,9 +42,16 @@ func main() {
         log.Fatalf("Failed to open database: %v", err)
     }
 
-    matrixBot, err := NewMatrixBot(cfg)
-    if err != nil {
-        log.Fatalf("Matrix login failed: %v", err)
+    var matrixBot *MatrixBot
+    if cfg.Matrix.Enabled {
+        var err error
+        matrixBot, err = NewMatrixBot(cfg)
+        if err != nil {
+            log.Fatalf("Matrix login failed: %v", err)
+        }
+        log.Printf("Matrix posting enabled")
+    } else {
+        log.Printf("Matrix posting disabled")
     }
 
     for {
@@ -141,32 +148,50 @@ func processAndSendImage(cfg *Config, db *Database, matrixBot *MatrixBot, imageI
         openaiDescription = ""
     }
 
-    // Parallel posting to Matrix, Mastodon, ntfy
+    // Parallel posting to enabled services (Matrix, Mastodon, ntfy)
     var postWg sync.WaitGroup
-    postWg.Add(3)
+    enabledServices := 0
 
-    go func() {
-        defer postWg.Done()
-        if err := matrixBot.SendImage(img, cfg, openaiDescription); err != nil {
-            log.Printf("Failed to send image %s to Matrix: %v", img.ID, err)
-        }
-    }()
-    go func() {
-        defer postWg.Done()
-        if err := PostToMastodon(cfg, img, openaiDescription, imagePath); err != nil {
-            log.Printf("Failed to post image %s to Mastodon: %v", img.ID, err)
-        }
-    }()
-    go func() {
-        defer postWg.Done()
-        ntfyStatus := BuildNtfyStatus(img, openaiDescription)
-        ntfyTags := NtfyTags(img)
-        if err := SendNtfyImageNotification(cfg, imagePath, ntfyStatus, ntfyTags, img.URL); err != nil {
-            log.Printf("Failed to send ntfy notification for %s: %v", img.ID, err)
-        }
-    }()
+    if cfg.Matrix.Enabled && matrixBot != nil {
+        postWg.Add(1)
+        enabledServices++
+        go func() {
+            defer postWg.Done()
+            if err := matrixBot.SendImage(img, cfg, openaiDescription); err != nil {
+                log.Printf("Failed to send image %s to Matrix: %v", img.ID, err)
+            }
+        }()
+    }
+    
+    if cfg.Mastodon.Enabled {
+        postWg.Add(1)
+        enabledServices++
+        go func() {
+            defer postWg.Done()
+            if err := PostToMastodon(cfg, img, openaiDescription, imagePath); err != nil {
+                log.Printf("Failed to post image %s to Mastodon: %v", img.ID, err)
+            }
+        }()
+    }
+    
+    if cfg.Ntfy.Enabled {
+        postWg.Add(1)
+        enabledServices++
+        go func() {
+            defer postWg.Done()
+            ntfyStatus := BuildNtfyStatus(img, openaiDescription)
+            ntfyTags := NtfyTags(img)
+            if err := SendNtfyImageNotification(cfg, imagePath, ntfyStatus, ntfyTags, img.URL); err != nil {
+                log.Printf("Failed to send ntfy notification for %s: %v", img.ID, err)
+            }
+        }()
+    }
 
-    postWg.Wait()
+    if enabledServices > 0 {
+        postWg.Wait()
+    } else {
+        log.Printf("Warning: All services are disabled, image %s will not be sent anywhere", img.ID)
+    }
 
     // Mark as sent in the DB
     if err := db.MarkSent(img.ID); err != nil {

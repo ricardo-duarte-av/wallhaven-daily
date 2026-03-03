@@ -13,6 +13,7 @@ type Config struct {
                 Password   string `yaml:"password"`
                 RoomID     string `yaml:"room_id"`
                 TokenFile  string `yaml:"token_file"`
+                Enabled    bool   `yaml:"enabled"` // Set to false to disable Matrix posting
         } `yaml:"matrix"`
         Wallhaven struct {
                 APIToken   string `yaml:"api_token"`
@@ -30,10 +31,12 @@ type Config struct {
         Mastodon struct {
             Server      string `yaml:"mastodon_server"`
             AccessToken string `yaml:"mastodon_token"`
+            Enabled     bool   `yaml:"enabled"` // Set to false to disable Mastodon posting
         }
         Ntfy struct {
-            Server string `yaml:"server"`
-            Topic  string `yaml:"topic"`
+            Server  string `yaml:"server"`
+            Topic   string `yaml:"topic"`
+            Enabled bool   `yaml:"enabled"` // Set to false to disable ntfy notifications
         } `yaml:"ntfy"`
         Debug bool `yaml:"debug"`
         MaxConcurrentImages int `yaml:"max_concurrent_images"` // Number of images to process in parallel
