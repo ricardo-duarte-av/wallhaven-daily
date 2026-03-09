@@ -113,27 +113,15 @@ func processAndSendImage(cfg *Config, db *Database, matrixBot *MatrixBot, imageI
         return
     }
     
-    log.Printf("Processing image %s (Path: %s, Thumbnail: %s)", img.ID, img.Path, img.Thumbs.Original)
+    log.Printf("Processing image %s (Path: %s)", img.ID, img.Path)
 
-    // Validate URLs before attempting download
-    if img.Thumbs.Original == "" {
-        log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: thumbnail URL is empty", img.ID)
-        return
-    }
+    // Validate URL before attempting download
     if img.Path == "" {
         log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: image URL (Path) is empty", img.ID)
         return
     }
 
-    // Download thumbnail for OpenAI
-    thumbPath, err := DownloadToTempFile(img.Thumbs.Original, "thumb")
-    if err != nil {
-        log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download thumbnail from %s: %v", img.ID, img.Thumbs.Original, err)
-        return
-    }
-    defer os.Remove(thumbPath)
-
-    // Download full image for Matrix, Mastodon and ntfy
+    // Download full image for Matrix, Mastodon, ntfy and for creating our thumbnail
     imagePath, err := DownloadToTempFile(img.Path, "image")
     if err != nil {
         log.Printf("Not sending image %s to Matrix/Mastodon/ntfy: could not download full image from %s: %v", img.ID, img.Path, err)
@@ -141,7 +129,15 @@ func processAndSendImage(cfg *Config, db *Database, matrixBot *MatrixBot, imageI
     }
     defer os.Remove(imagePath)
 
-    // OpenAI Description
+    // Create our own thumbnail (800px max dimension) from full image; used for OpenAI and Matrix
+    thumbPath, err := CreateThumbnailMax800(imagePath)
+    if err != nil {
+        log.Printf("Not sending image %s: could not create thumbnail: %v", img.ID, err)
+        return
+    }
+    defer os.Remove(thumbPath)
+
+    // OpenAI Description (using our 800px thumbnail)
     openaiDescription, err := GetOpenAIDescription(cfg, thumbPath)
     if err != nil {
         log.Printf("OpenAI error: %v", err)
@@ -157,7 +153,7 @@ func processAndSendImage(cfg *Config, db *Database, matrixBot *MatrixBot, imageI
         enabledServices++
         go func() {
             defer postWg.Done()
-            if err := matrixBot.SendImage(img, cfg, openaiDescription); err != nil {
+            if err := matrixBot.SendImage(img, cfg, openaiDescription, imagePath, thumbPath); err != nil {
                 log.Printf("Failed to send image %s to Matrix: %v", img.ID, err)
             }
         }()

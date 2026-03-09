@@ -15,7 +15,6 @@ import (
         "path"
         "strings"
         "time"
-        "os"
         "errors"
 
         "github.com/buckket/go-blurhash"
@@ -157,43 +156,35 @@ func saveToken(filename, token string) error {
         return ioutil.WriteFile(filename, []byte(token), 0600)
 }
 
-func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription string) error {
+func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription string, imagePath, thumbPath string) error {
         ctx := context.Background()
 
         log.Printf("Matrix: Starting to send image %s to room %s", img.ID, m.roomID)
         filename := path.Base(img.Path)
 
-        // Download and decode images once for reuse
-        thumbImgData, thumbImg, err := downloadAndDecodeImage(img.Thumbs.Original)
+        // Load main image from local file (already downloaded by main)
+        mainImgData, err := ioutil.ReadFile(imagePath)
         if err != nil {
-                log.Printf("Error downloading/decoding thumbnail: %v", err)
+                log.Printf("Error reading main image from %s: %v", imagePath, err)
                 return err
         }
-        mainImgData, mainImg, err := downloadAndDecodeImage(img.Path)
+        mainImg, _, err := image.Decode(bytes.NewReader(mainImgData))
         if err != nil {
-                log.Printf("Error downloading/decoding main image: %v", err)
+                log.Printf("Error decoding main image: %v", err)
                 return err
         }
 
-        // Save thumbnail to temp file for OpenAI (if needed in future)
-        tmpfile, err := ioutil.TempFile("", "thumb-*.jpg")
+        // Load our custom thumbnail (800px max dimension) from local file
+        thumbImgData, err := ioutil.ReadFile(thumbPath)
         if err != nil {
-                log.Printf("Error with TempFile: %v", err)
+                log.Printf("Error reading thumbnail from %s: %v", thumbPath, err)
                 return err
         }
-        defer os.Remove(tmpfile.Name())
-        _, err = tmpfile.Write(thumbImgData)
+        thumbImg, _, err := image.Decode(bytes.NewReader(thumbImgData))
         if err != nil {
-                log.Printf("Error writing to temp file: %v", err)
+                log.Printf("Error decoding thumbnail: %v", err)
                 return err
         }
-        tmpfile.Close()
-
-        // Get OpenAI description
-        //openaiDescription, err := GetOpenAIDescription(cfg, tmpfile.Name())
-        //if err != nil {
-        //      openaiDescription = "(No AI description available)"
-        //}
 
         // Log what will be sent
         caption := buildCaption(img, openaiDescription)
@@ -221,9 +212,9 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         }
         log.Printf("Matrix: Original image uploaded successfully, URI: %s", mainResp.ContentURI)
 
-        // Upload thumbnail
-        log.Printf("Matrix: Attempting to upload thumbnail from %s", img.Thumbs.Original)
-        thumbResp, err := m.client.UploadLink(ctx, img.Thumbs.Original)
+        // Upload our custom thumbnail (800px max) as bytes
+        log.Printf("Matrix: Uploading custom thumbnail (800px max) from %s", thumbPath)
+        thumbResp, err := m.client.UploadBytes(ctx, thumbImgData, "image/jpeg")
         if err != nil {
             if httpErr, ok := err.(*mautrix.HTTPError); ok {
                 log.Printf("Matrix thumbnail upload error: %s - %s", httpErr.Message, httpErr.ResponseBody)
@@ -231,7 +222,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
                 log.Printf("Matrix thumbnail upload error: %v", err)
             }
             log.Printf("Matrix: Returning on Thumbnail.")
-            return err                
+            return err
         }
         log.Printf("Matrix: Thumbnail uploaded successfully, URI: %s", thumbResp.ContentURI)
 
@@ -256,7 +247,7 @@ func (m *MatrixBot) SendImage(img WallhavenImage, cfg *Config, openaiDescription
         isAnimated := isImageAnimated(mainImgData)
 
         thumbnailInfo := map[string]interface{}{
-                "mimetype": img.FileType,
+                "mimetype": "image/jpeg",
                 "w":        thumbWidth,
                 "h":        thumbHeight,
         }
